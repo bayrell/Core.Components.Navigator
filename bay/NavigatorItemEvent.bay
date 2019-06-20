@@ -25,21 +25,23 @@ use Core.Components.Navigator.NavigatorItem;
 
 struct NavigatorItemEvent extends CoreEvent
 {
-	const string KIND_CREATE_START = "create_start";
-	const string KIND_CREATE_END = "create_end";
-	const string KIND_RELOAD_START = "reload_start";
-	const string KIND_RELOAD_END = "reload_end";
-	const string KIND_RENAME_START = "rename_start";
-	const string KIND_RENAME_END = "rename_end";
-	const string KIND_DELETE_START = "delete_start";
-	const string KIND_DELETE_END = "delete_end";
+	const string CREATE_START = "create_start";
+	const string CREATE_END = "create_end";
+	const string RELOAD_FOLDER_START = "reload_folder_start";
+	const string RELOAD_FOLDER_END = "reload_folder_end";
+	const string OPEN_FILE_START = "open_file_start";
+	const string OPEN_FILE_END = "open_file_end";
+	const string RENAME_START = "rename_start";
+	const string RENAME_END = "rename_end";
+	const string DELETE_START = "delete_start";
+	const string DELETE_END = "delete_end";
 	
 	public string kind = "";
 	public Collection<int> path = null;
 	public NavigatorItem item = null;
 	public NavigatorItem item_old = null;
 	public NavigatorItem item_new = null;
-	public string path_str = "";
+	public string file_path = "";
 	public string old_name = "";
 	public string new_name = "";
 	public ApiResult res = null;

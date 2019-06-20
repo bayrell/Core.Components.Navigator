@@ -23,9 +23,7 @@ use Core.Components.ContextMenu.ContextMenuItemClickEvent;
 use Core.Components.Navigator.NavigatorItem;
 use Core.Components.Navigator.NavigatorItemEvent;
 use Core.Components.Tree.TreeItem;
-use Core.Components.Tree.TreeItemSelectEvent;
-use Core.Components.Tree.TreeItemContextMenuEvent;
-use Core.Components.Tree.TreeItemDoubleClickEvent;
+use Core.Components.Tree.TreeItemEvent;
 use Core.Components.Tree.TreeManager;
 use Core.Components.Tree.TreeModel;
 use Core.FileSystem.FileNode;
@@ -58,188 +56,58 @@ class NavigatorManager extends TreeManager
 	
 	
 	
-	/**
-	 * Event create node
-	 */
-	public async void createNode(Collection<int> path, int pos, NavigatorItem item)
-	{
-		ContextInterface context = this.context();
-		Collection<int> path = path.pushIm(pos);
-		string path_str = TreeModel::getNamePath(this.model, path);
-		
-		if (item.kind == NavigatorItem::KIND_FILE or item.kind == NavigatorItem::KIND_FOLDER)
-		{
-			string api_kind = FileNode::KIND_FILE;
-			if (item.kind == NavigatorItem::KIND_FOLDER) api_kind = FileNode::KIND_FOLDER;
-			
-			/* Signal out */
-			this.signalOut( 
-				new NavigatorItemEvent
-				{ 
-					"kind": NavigatorItemEvent::KIND_CREATE_START,
-					"item": item,
-					"path": path,
-					"path_str": path_str,
-				} 
-			);
-			
-			ApiResult res = await context.callApi(
-				this.model.api_class_name,
-				"Core.FileSystem.FileTransferInterface",
-				"createNode",
-				{
-					"path": path_str,
-					"kind": api_kind,
-					"clear": true,
-				}
-			);
-			
-			/* Signal out */
-			this.signalOut( 
-				new NavigatorItemEvent
-				{ 
-					"kind": NavigatorItemEvent::KIND_CREATE_END,
-					"item": item,
-					"path": path,
-					"path_str": path_str,
-					"res": res,
-				} 
-			);
-			
-		}
-	}
 	
+	/* ---------------------------------- Open Item ---------------------------------- */
 	
 	
 	/**
-	 * Event rename node
+	 * Open item
 	 */
-	public async void renameNode(Collection<int> path, NavigatorItem item_old, NavigatorItem item_new)
+	void openItem(string tree_data_path)
 	{
-		ContextInterface context = this.context();
-		Collection<int> p_path = path.removeLastIm();
-		string path_str = TreeModel::getNamePath(this.model, p_path);
-		string path_old = path_str ~ "/" ~ item_old.name;
-		string old_name = item_old.name;
-		string new_name = item_new.name;
-		
-		if (item_old.kind == NavigatorItem::KIND_FILE or item_old.kind == NavigatorItem::KIND_FOLDER)
-		{
-			string api_kind = FileNode::KIND_FILE;
-			if (item_old.kind == NavigatorItem::KIND_FOLDER) api_kind = FileNode::KIND_FOLDER;
-			
-			/* Signal out */
-			this.signalOut( 
-				new NavigatorItemEvent
-				{ 
-					"kind": NavigatorItemEvent::KIND_RENAME_START,
-					"item_old": item_old,
-					"item_new": item_new,
-					"path": path,
-					"path_str": path_str,
-					"old_name": old_name,
-					"new_name": new_name,
-				} 
-			);
-			
-			ApiResult res = await context.callApi(
-				this.model.api_class_name,
-				"Core.FileSystem.FileTransferInterface",
-				"renameNode",
-				{
-					"path": path_str,
-					"kind": api_kind,
-					"old_name": old_name,
-					"new_name": new_name,
-				}
-			);
-			
-			/* Signal out */
-			this.signalOut( 
-				new NavigatorItemEvent
-				{ 
-					"kind": NavigatorItemEvent::KIND_RENAME_END,
-					"item_old": item_old,
-					"item_new": item_new,
-					"path": path,
-					"path_str": path_str,
-					"old_name": old_name,
-					"new_name": new_name,
-					"res": res,
-				} 
-			);
-			
-			
-		}
-		
-	}
-	
-	
-	
-	/**
-	 * Event delete node
-	 */
-	public async void deleteNode(Collection<int> path, NavigatorItem item)
-	{
-		ContextInterface context = this.context();
-		Collection<int> p_path = path.removeLastIm();
-		string path_str = TreeModel::getNamePath(this.model, p_path) ~ "/" ~ item.name;
-		
-		/* Signal out */
-		this.signalOut( 
-			new NavigatorItemEvent
-			{ 
-				"kind": NavigatorItemEvent::KIND_DELETE_START,
-				"item": item,
-				"path": path,
-				"path_str": path_str,
-			} 
-		);
-		
-		/* Delete node */
-		ApiResult res = await context.callApi(
-			this.model.api_class_name,
-			"Core.FileSystem.FileTransferInterface",
-			"deleteNode",
-			{
-				"path": path_str,
-			}
-		);
-		
-		/* Signal out */
-		this.signalOut( 
-			new NavigatorItemEvent
-			{ 
-				"kind": NavigatorItemEvent::KIND_DELETE_END,
-				"item": item,
-				"path": path,
-				"path_str": path_str,
-			} 
-		);
-		
-	}
-	
-	
-	
-	/**
-	 * Event rename node
-	 */
-	public async void openNode(Collection<int> path)
-	{
+		Collection<int> path = TreeModel::splitPath(tree_data_path);
 		NavigatorItem item = TreeModel::getTreeItem(this.model, path);
-		if (item.items == null)
+		
+		if (item.kind == NavigatorItem::KIND_FOLDER)
 		{
-			await this.reloadNode(path);
+			if (item.items == null)
+			{
+				fun f = rtl::methodAwait(this, "reloadItemAsync");
+				f(tree_data_path);
+			}
+			else
+			{
+				item = item.copy({
+					"is_open": not item.is_open,
+					"is_reload": false,
+				});
+				
+				/* Update model */
+				this.setModel( TreeModel::setTreeItem(this.model, path, item) );
+				
+				/* Signal Out */
+				this.signalOut( new TreeItemEvent{ "kind": TreeItemEvent::OPEN, "path": path } );
+			}
 		}
-		else
+		else if (item.kind == NavigatorItem::KIND_FILE)
 		{
-			item = item.copy({
-				"is_open": not item.is_open,
-				"is_reload": false,
-			});
-			/* Update model */
-			this.setModel( TreeModel::setTreeItem(this.model, path, item) );
+			fun f = rtl::methodAwait(this, "reloadItemAsync");
+			f(tree_data_path);
 		}
+	}
+	
+	
+	
+	/* ---------------------------------- Reload Item ---------------------------------- */
+	
+	
+	/**
+	 * Reload item
+	 */
+	void reloadItem(string tree_data_path)
+	{
+		fun f = rtl::methodAwait(this, "reloadItemAsync");
+		f(tree_data_path);
 	}
 	
 	
@@ -247,10 +115,14 @@ class NavigatorManager extends TreeManager
 	/**
 	 * Event reload node
 	 */
-	public async void reloadNode(Collection<int> path)
+	public async void reloadItemAsync(string tree_data_path)
 	{
 		ContextInterface context = this.context();
+		Collection<int> path = TreeModel::splitPath(tree_data_path);
+		
+		/* Get item */
 		NavigatorItem item = TreeModel::getTreeItem(this.model, path);
+		string file_path = TreeModel::getNamePath(this.model, path);
 		
 		/* Reload folder */
 		if (item.kind == NavigatorItem::KIND_FOLDER)
@@ -263,15 +135,12 @@ class NavigatorManager extends TreeManager
 			this.signalOut( 
 				new NavigatorItemEvent
 				{ 
-					"kind": NavigatorItemEvent::KIND_RELOAD_START,
+					"kind": NavigatorItemEvent::RELOAD_FOLDER_START,
 					"item": item,
 					"path": path,
-					"path_str": path_str,
+					"file_path": file_path,
 				} 
 			);
-			
-			/* Get folder path */
-			string path_str = TreeModel::getNamePath(this.model, path);
 			
 			/* Call api */
 			ApiResult res = await context.callApi(
@@ -279,7 +148,7 @@ class NavigatorManager extends TreeManager
 				"Core.FileSystem.FileTransferInterface",
 				"getDirectoryListing",
 				{
-					"path": path_str,
+					"path": file_path,
 				}
 			);
 			
@@ -296,6 +165,9 @@ class NavigatorManager extends TreeManager
 					"is_open": true,
 					"is_reload": false,
 				});
+				
+				/* Signal Out */
+				this.signalOut( new TreeItemEvent{ "kind": TreeItemEvent::OPEN, "path": path, "item": item } );
 			}
 			else
 			{
@@ -309,10 +181,10 @@ class NavigatorManager extends TreeManager
 			this.signalOut( 
 				new NavigatorItemEvent
 				{ 
-					"kind": NavigatorItemEvent::KIND_RELOAD_END,
+					"kind": NavigatorItemEvent::RELOAD_FOLDER_END,
 					"item": item,
 					"path": path,
-					"path_str": path_str,
+					"file_path": file_path,
 					"res": res,
 				} 
 			);
@@ -326,8 +198,6 @@ class NavigatorManager extends TreeManager
 			item <= is_reload <= true;
 			this.setModel( TreeModel::setTreeItem(this.model, path, item) );
 			
-			/* Get folder path */
-			string path_str = TreeModel::getNamePath(this.model, path);
 			int offset = 0;
 			int filesize = -1;
 			Vector<byte> content = new Vector();
@@ -336,10 +206,10 @@ class NavigatorManager extends TreeManager
 			this.signalOut( 
 				new NavigatorItemEvent
 				{ 
-					"kind": NavigatorItemEvent::KIND_RELOAD_START,
+					"kind": NavigatorItemEvent::OPEN_FILE_START,
 					"item": item,
 					"path": path,
-					"path_str": path_str,
+					"file_path": file_path,
 				} 
 			);
 			
@@ -351,7 +221,7 @@ class NavigatorManager extends TreeManager
 					"Core.FileSystem.FileTransferInterface",
 					"readBlock",
 					{
-						"path": path_str,
+						"path": file_path,
 						"offset": offset,
 					}
 				);
@@ -374,14 +244,281 @@ class NavigatorManager extends TreeManager
 			this.signalOut( 
 				new NavigatorItemEvent
 				{ 
-					"kind": NavigatorItemEvent::KIND_RELOAD_END,
+					"kind": NavigatorItemEvent::OPEN_FILE_END,
 					"item": item,
 					"path": path,
-					"path_str": path_str,
+					"file_path": file_path,
 					"content": content.toCollection()
 				} 
 			);
 		}
+		
+	}
+	
+	
+	
+	
+	/* ---------------------------------- Create Item ---------------------------------- */
+	
+	
+	/**
+	 * Create item
+	 */
+	public void createDialogItem(DialogResultEvent result)
+	{
+		fun f = rtl::methodAwait(this, "createItemAsync");
+		f(result);
+	}
+	
+	
+	
+	/**
+	 * Create item
+	 */
+	public async void createItemAsync(DialogResultEvent result)
+	{
+		Collection<int> path = result.model.path;
+		TreeItem item = this.createNewItemByDialogResult(result);
+		
+		string file_path = result.model.file_path ~ "/" ~ result.model.input;
+		string api_kind = FileNode::KIND_FILE;
+		if (item.kind == NavigatorItem::KIND_FOLDER) api_kind = FileNode::KIND_FOLDER;
+		
+		/* Signal out */
+		this.signalOut( 
+			new NavigatorItemEvent
+			{ 
+				"kind": NavigatorItemEvent::CREATE_START,
+				"item": item,
+				"path": path,
+				"file_path": file_path,
+			} 
+		);
+		
+		
+		/* Send api */
+		ApiResult res = await context.callApi(
+			this.model.api_class_name,
+			"Core.FileSystem.FileTransferInterface",
+			"createNode",
+			{
+				"path": file_path,
+				"kind": api_kind,
+				"clear": true,
+			}
+		);
+		
+		
+		/* Add item*/
+		TreeModel model = TreeModel::addTreeItem
+		(
+			this.model,
+			path,
+			item,
+			void (Collection<TreeItem> items, TreeItem item) => return items.pushIm(item)
+		);
+		this.setModel( model );
+		
+		/* Signal out */
+		this.signalOut( new TreeItemEvent{ "kind": TreeItemEvent::CREATE, "path": path, "item": item } );
+		
+		/* Signal out */
+		this.signalOut( 
+			new NavigatorItemEvent
+			{ 
+				"kind": NavigatorItemEvent::CREATE_END,
+				"item": item,
+				"path": path,
+				"file_path": file_path,
+				"res": res,
+			} 
+		);
+	}
+	
+	
+	
+	
+	/* ---------------------------------- Rename Item ---------------------------------- */
+	
+	
+	/**
+	 * Rename item
+	 */
+	public void renameDialogItem(DialogResultEvent result)
+	{
+		fun f = rtl::methodAwait(this, "renameItemAsync");
+		f(result);
+	}
+	
+	
+	
+	/**
+	 * Event rename node
+	 */
+	public async void renameItemAsync(DialogResultEvent result)
+	{
+		TreeItem item = TreeModel::getTreeItem(this.model, result.model.path);
+		if (item == null)
+		{
+			return;
+		}
+		
+		TreeItem item_new = item;
+		TreeItem item_old = item;
+		item_new <= name <= result.input;
+		
+		ContextInterface context = this.context();
+		Collection<int> path = result.model.path;
+		Collection<int> p_path = path.removeLastIm();
+		string file_path = TreeModel::getNamePath(this.model, p_path);
+		string path_old = file_path ~ "/" ~ item_old.name;
+		string old_name = item_old.name;
+		string new_name = item_new.name;
+		string api_kind = FileNode::KIND_FILE;
+		if (item_old.kind == NavigatorItem::KIND_FOLDER) api_kind = FileNode::KIND_FOLDER;
+		
+		
+		/* Signal out */
+		this.signalOut( 
+			new NavigatorItemEvent
+			{ 
+				"kind": NavigatorItemEvent::RENAME_START,
+				"item_old": item_old,
+				"item_new": item_new,
+				"path": path,
+				"file_path": file_path,
+				"old_name": old_name,
+				"new_name": new_name,
+			} 
+		);
+		
+		
+		/* Send api */
+		ApiResult res = await context.callApi(
+			this.model.api_class_name,
+			"Core.FileSystem.FileTransferInterface",
+			"renameNode",
+			{
+				"path": file_path,
+				"kind": api_kind,
+				"old_name": old_name,
+				"new_name": new_name,
+			}
+		);
+		
+		
+		/* Set new model */
+		TreeModel model = TreeModel::setTreeItem
+		(
+			this.model,
+			result.model.path,
+			item_new
+		);
+		this.setModel( model );
+		
+		
+		/* Signal out */
+		this.signalOut(
+			new TreeItemEvent
+			{
+				"kind": TreeItemEvent::RENAME,
+				"path": path,
+				"item_new": item_new,
+				"item_old": item_old,
+			}
+		);
+		
+		
+		/* Signal out */
+		this.signalOut( 
+			new NavigatorItemEvent
+			{ 
+				"kind": NavigatorItemEvent::RENAME_END,
+				"item_old": item_old,
+				"item_new": item_new,
+				"path": path,
+				"file_path": file_path,
+				"old_name": old_name,
+				"new_name": new_name,
+				"res": res,
+			} 
+		);
+		
+	}
+	
+	
+	
+	
+	/* ---------------------------------- Delete Item ---------------------------------- */
+	
+	
+	/**
+	 * Remove item
+	 */
+	public void removeDialogItem(DialogResultEvent result)
+	{
+		fun f = rtl::methodAwait(this, "deleteItemAsync");
+		f(result);
+	}
+	
+	
+	
+	/**
+	 * Event delete node
+	 */
+	public async void deleteItemAsync(DialogResultEvent result)
+	{
+		ContextInterface context = this.context();
+		TreeItem item = TreeModel::getTreeItem(this.model, result.model.path);
+		Collection<int> path = result.model.path;
+		Collection<int> p_path = path.removeLastIm();
+		string file_path = TreeModel::getNamePath(this.model, p_path) ~ "/" ~ item.name;
+		
+		/* Signal out */
+		this.signalOut( 
+			new NavigatorItemEvent
+			{ 
+				"kind": NavigatorItemEvent::DELETE_START,
+				"item": item,
+				"path": path,
+				"file_path": file_path,
+			} 
+		);
+		
+		/* Delete node */
+		ApiResult res = await context.callApi(
+			this.model.api_class_name,
+			"Core.FileSystem.FileTransferInterface",
+			"deleteNode",
+			{
+				"path": file_path,
+			}
+		);
+		
+		
+		/* Set new model */
+		TreeModel model = TreeModel::deleteTreeItem
+		(
+			this.model,
+			result.model.path
+		);
+		this.setModel( model );
+		
+		
+		/* Signal out */
+		this.signalOut( new TreeItemEvent{ "kind": TreeItemEvent::DELETE, "path": path, "item": item } );
+		
+		
+		/* Signal out */
+		this.signalOut( 
+			new NavigatorItemEvent
+			{ 
+				"kind": NavigatorItemEvent::DELETE_END,
+				"item": item,
+				"path": path,
+				"file_path": file_path,
+			} 
+		);
 		
 	}
 	
