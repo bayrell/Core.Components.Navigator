@@ -44,6 +44,9 @@ use Core.UI.Render.CoreManager;
 class NavigatorManager extends TreeManager
 {
 	public NavigatorModel model;
+	public string remote_href = "";
+	public string api_class_name = "";
+	
 	
 	
 	/**
@@ -54,6 +57,16 @@ class NavigatorManager extends TreeManager
 		return new NavigatorItem(map);
 	}
 	
+	
+	
+	/**
+	 * Init manager
+	 */
+	public void onInitManager()
+	{
+		this.remote_href = this.ui.props.get("remote_href", "");
+		this.api_class_name = this.ui.props.get("api_class_name", "");
+	}
 	
 	
 	
@@ -144,7 +157,7 @@ class NavigatorManager extends TreeManager
 			
 			/* Call api */
 			ApiResult res = await context.callApi(
-				this.model.api_class_name,
+				this.api_class_name,
 				"Core.FileSystem.FileTransferInterface",
 				"getDirectoryListing",
 				{
@@ -217,7 +230,7 @@ class NavigatorManager extends TreeManager
 			while (filesize == -1 or offset < filesize)
 			{
 				ApiResult res = await context.callApi(
-					this.model.api_class_name,
+					this.api_class_name,
 					"Core.FileSystem.FileTransferInterface",
 					"readBlock",
 					{
@@ -298,7 +311,7 @@ class NavigatorManager extends TreeManager
 		
 		/* Send api */
 		ApiResult res = await context.callApi(
-			this.model.api_class_name,
+			this.api_class_name,
 			"Core.FileSystem.FileTransferInterface",
 			"createNode",
 			{
@@ -395,7 +408,7 @@ class NavigatorManager extends TreeManager
 		
 		/* Send api */
 		ApiResult res = await context.callApi(
-			this.model.api_class_name,
+			this.api_class_name,
 			"Core.FileSystem.FileTransferInterface",
 			"renameNode",
 			{
@@ -487,7 +500,7 @@ class NavigatorManager extends TreeManager
 		
 		/* Delete node */
 		ApiResult res = await context.callApi(
-			this.model.api_class_name,
+			this.api_class_name,
 			"Core.FileSystem.FileTransferInterface",
 			"deleteNode",
 			{
